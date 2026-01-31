@@ -245,7 +245,11 @@ namespace Stride.Graphics
                 var glyphRect = new Vector2(glyph.Subrect.Right - glyph.Subrect.Left, glyph.Subrect.Top - glyph.Subrect.Bottom);
                 Vector2.Modulate(ref glyphRect, ref AxisIsMirroredTable[(int)spriteEffects & 3], out offset);
             }
-            var destination = new RectangleF(parameters.Position.X, parameters.Position.Y, parameters.Scale.X, parameters.Scale.Y);
+            var destination = new RectangleF(
+                parameters.Position.X,
+                parameters.Position.Y,
+                parameters.Scale.X * auxiliaryScaling.X,
+                parameters.Scale.Y * auxiliaryScaling.Y);
             RectangleF? sourceRectangle = glyph.Subrect;
             parameters.SpriteBatch.DrawSprite(Textures[glyph.BitmapIndex], ref destination, true, ref sourceRectangle, parameters.Color, new Color4(0, 0, 0, 0),  parameters.Rotation, ref offset, spriteEffects, ImageOrientation.AsIs, parameters.Depth, swizzle, true);            
         }
