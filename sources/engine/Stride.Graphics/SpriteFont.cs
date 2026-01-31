@@ -198,6 +198,15 @@ namespace Stride.Graphics
         {
             return GetExtraLineSpacing(fontSize) + GetFontDefaultLineSpacing(fontSize);
         }
+
+        /// <summary>
+        /// Prepares glyphs for immediate rendering (for example when a single-frame preview/thumbnail is rendered).
+        /// </summary>
+        /// <param name="commandList">The command list used for GPU uploads.</param>
+        /// <param name="text">The text that should be ready for rendering.</param>
+        public virtual void WarmUpGlyphs(CommandList commandList, string text)
+        {
+        }
         
         internal void InternalDraw(CommandList commandList, ref StringProxy text, ref InternalDrawCommand drawCommand, TextAlignment alignment)
         {

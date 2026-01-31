@@ -63,6 +63,8 @@ namespace Stride.Assets.Presentation.Preview
 
             var textToDisplay = string.IsNullOrEmpty(previewText) ? "Enter the text to preview" : previewText;
 
+            spriteFont.WarmUpGlyphs(Game.GraphicsContext.CommandList, textToDisplay);
+
             var textSize = spriteFont.MeasureString(textToDisplay);
             var windowSize = new Vector2(Game.Window.ClientBounds.Width, Game.Window.ClientBounds.Height);
             var position = SpriteOffsets + (windowSize - textSize) / 2;

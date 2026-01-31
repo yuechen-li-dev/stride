@@ -80,6 +80,8 @@ namespace Stride.Editor.Thumbnails
 
             if (Font != null)
             {
+                Font.WarmUpGlyphs(context.CommandList, TitleText);
+
                 // Measure the type name to draw and calculate the scale factor needed for the name to enter the thumbnail
                 var typeNameSize = Font.MeasureString(TitleText);
                 var scale = FontSize * Math.Min(thumbnailSize.X / typeNameSize.X, thumbnailSize.Y / typeNameSize.Y);

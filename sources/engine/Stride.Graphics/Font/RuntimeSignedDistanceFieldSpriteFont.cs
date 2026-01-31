@@ -97,9 +97,8 @@ namespace Stride.Graphics.Font
 
             // IMPORTANT:
             // SDF fonts are scaled by Stride using requestedFontSize vs SpriteFont.Size.
-            // fixScaling should only compensate baked glyph pixel size (BakeSize) -> logical font size (Size).
-            var logicalSizeVec = new Vector2(Size, Size);
-            fixScaling = logicalSizeVec / bakedSizeVec;
+            // fixScaling should compensate baked glyph pixel size (BakeSize) -> requested font size.
+            fixScaling = fontSize / bakedSizeVec;
 
             var spec = GetOrCreateCharacterData(character, bakedSizeVec);
 
@@ -158,6 +157,58 @@ namespace Stride.Graphics.Font
                 
                 EnsureSdfScheduled(c, spec);
 
+            }
+        }
+
+        public override void WarmUpGlyphs(CommandList commandList, string text)
+        {
+            if (commandList == null || string.IsNullOrEmpty(text))
+                return;
+
+            var bakedSizeVec = new Vector2(BakeSize, BakeSize);
+            var pad = ComputeTotalPad();
+            var pixelRange = Math.Max(1, PixelRange);
+
+            foreach (var c in text)
+            {
+                var spec = GetOrCreateCharacterData(c, bakedSizeVec);
+
+                if (spec.Bitmap == null)
+                    FontManager.GenerateBitmap(spec, true);
+
+                if (spec.Bitmap == null || spec.Bitmap.Width == 0 || spec.Bitmap.Rows == 0)
+                    continue;
+
+                if (spec.IsBitmapUploaded)
+                    continue;
+
+                var bmp = spec.Bitmap;
+                var width = bmp.Width;
+                var rows = bmp.Rows;
+                var pitch = bmp.Pitch;
+
+                var srcCopy = new byte[pitch * rows];
+                unsafe
+                {
+                    System.Runtime.InteropServices.Marshal.Copy((IntPtr)bmp.Buffer, srcCopy, 0, srcCopy.Length);
+                }
+
+                var sdfBitmap = BuildSdfRgbFromCoverage(srcCopy, width, rows, pitch, pad, pixelRange);
+
+                var subrect = new Rectangle();
+                var handle = FontCacheManagerMsdf.UploadGlyphBitmap(commandList, spec, sdfBitmap, ref subrect, out var bitmapIndex);
+
+                spec.Glyph.Subrect = handle.InnerSubrect;
+                spec.Glyph.BitmapIndex = bitmapIndex;
+                spec.IsBitmapUploaded = true;
+
+                cacheRecords[c] = handle;
+                FontCacheManagerMsdf.NotifyGlyphUtilization(handle);
+
+                if (offsetAdjusted.Add(c))
+                    spec.Glyph.Offset -= new Vector2(pad, pad);
+
+                sdfBitmap.Dispose();
             }
         }
 
