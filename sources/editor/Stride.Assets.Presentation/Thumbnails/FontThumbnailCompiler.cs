@@ -1,5 +1,6 @@
 // Copyright (c) .NET Foundation and Contributors (https://dotnetfoundation.org/ & https://stride3d.net) and Silicon Studio Corp. (https://www.siliconstudio.co.jp)
 // Distributed under the MIT license. See the LICENSE.md file in the project root for more information.
+using System;
 using System.IO;
 using Stride.Core.Assets;
 using Stride.Core.Assets.Compiler;
@@ -61,6 +62,12 @@ namespace Stride.Assets.Presentation.Thumbnails
 
             if (Font != null && Font.FontType == SpriteFontType.SDF)
                 EffectInstance = UIBatch.SDFSpriteFontEffect;
+
+            if (Parameters.Asset is SpriteFontAsset fontAsset && fontAsset.FontType is RuntimeSignedDistanceFieldSpriteFontType runtimeSdfType)
+            {
+                var bakeSize = Math.Max(1, runtimeSdfType.BakeSize);
+                FontSize *= runtimeSdfType.Size / bakeSize;
+            }
         }
 
         protected virtual string BuildTitleText()
@@ -69,7 +76,12 @@ namespace Stride.Assets.Presentation.Thumbnails
             var title = fontAsset.FontSource.GetFontName();
             var splitedFontName = SpitStringIntoSeveralLines(title); // if the name is too long we insert line returns
 
-            return splitedFontName + "\n" + fontAsset.FontType.Size + " " + fontAsset.FontSource.Style;
+            if (fontAsset.FontType is RuntimeSignedDistanceFieldSpriteFontType runtimeSdfType)
+            {
+                return splitedFontName + "\n" + $"{runtimeSdfType.Size} (Bake {runtimeSdfType.BakeSize}) {fontAsset.FontSource.Style}";
+            }
+
+            return splitedFontName + "\n" + $"{fontAsset.FontType.Size} {fontAsset.FontSource.Style}";
         }
 
         /// <summary>

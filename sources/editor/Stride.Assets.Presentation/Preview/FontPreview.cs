@@ -3,6 +3,7 @@
 
 using Stride.Core.Assets;
 using Stride.Core.Mathematics;
+using Stride.Assets.SpriteFont;
 using Stride.Graphics;
 using Stride.Rendering;
 
@@ -63,14 +64,22 @@ namespace Stride.Assets.Presentation.Preview
 
             var textToDisplay = string.IsNullOrEmpty(previewText) ? "Enter the text to preview" : previewText;
 
-            var textSize = spriteFont.MeasureString(textToDisplay);
+            spriteFont.WarmUpGlyphs(Game.GraphicsContext.CommandList, textToDisplay);
+
+            var previewFontSize = spriteFont.Size;
+            if (Asset is SpriteFontAsset fontAsset && fontAsset.FontType is RuntimeSignedDistanceFieldSpriteFontType runtimeSdfType)
+            {
+                previewFontSize = runtimeSdfType.BakeSize;
+            }
+
+            var textSize = spriteFont.MeasureString(textToDisplay, previewFontSize);
             var windowSize = new Vector2(Game.Window.ClientBounds.Width, Game.Window.ClientBounds.Height);
             var position = SpriteOffsets + (windowSize - textSize) / 2;
 
             var effectInstance = (spriteFont.FontType == SpriteFontType.SDF) ? GetSDFFontEffect(Game.GraphicsDevice) : null;
 
             SpriteBatch.Begin(Game.GraphicsContext, SpriteSortMode.Texture, adequateBlendState, null, null, null, effectInstance);
-            SpriteBatch.DrawString(spriteFont, textToDisplay, position, Color.White);
+            SpriteBatch.DrawString(spriteFont, textToDisplay, previewFontSize, position, Color.White);
             SpriteBatch.End();
         }
     }
