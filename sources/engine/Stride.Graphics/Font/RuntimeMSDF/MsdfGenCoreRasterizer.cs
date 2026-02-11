@@ -2,6 +2,7 @@
 // Distributed under the MIT license. See the LICENSE.md file in the project root for more information.
 
 using System;
+using Stride.Core.Mathematics;
 using Msdfgen;
 using static Msdfgen.ErrorCorrectionConfig;
 using MsdfVector2 = Msdfgen.Vector2;
@@ -35,7 +36,7 @@ namespace Stride.Graphics.Font.RuntimeMsdf
 
             // Normalize BEFORE orienting for self-intersecting shapes
             shape.Normalize();
-            
+
             // Orient contours consistently
             shape.OrientContours();
 
@@ -149,7 +150,7 @@ namespace Stride.Graphics.Font.RuntimeMsdf
         private static void EdgeColoringInkTrap(Shape shape, double angleThreshold)
         {
             const double crossThreshold = 0.05; // sin(~3 degrees) for detecting corners
-            
+
             foreach (var contour in shape.Contours)
             {
                 if (contour.Edges.Count == 0) continue;
@@ -168,7 +169,7 @@ namespace Stride.Graphics.Font.RuntimeMsdf
                 {
                     int prevIndex = (i - 1 + contour.Edges.Count) % contour.Edges.Count;
                     int nextIndex = (i + 1) % contour.Edges.Count;
-                    
+
                     var prevColor = contour.Edges[prevIndex].Color;
                     var nextColor = contour.Edges[nextIndex].Color;
 
@@ -190,13 +191,13 @@ namespace Stride.Graphics.Font.RuntimeMsdf
                 for (int i = 0; i < contour.Edges.Count; i++)
                 {
                     int prevIndex = (i - 1 + contour.Edges.Count) % contour.Edges.Count;
-                    
+
                     var prevEdge = contour.Edges[prevIndex];
                     var edge = contour.Edges[i];
 
                     var prevDir = prevEdge.Direction(1).Normalize();
                     var curDir = edge.Direction(0).Normalize();
-                    
+
                     double dot = MsdfVector2.DotProduct(prevDir, curDir);
                     double cross = Math.Abs(MsdfVector2.CrossProduct(prevDir, curDir));
 
@@ -219,25 +220,21 @@ namespace Stride.Graphics.Font.RuntimeMsdf
             }
         }
 
-        private static unsafe void PackToRgba8(Bitmap<float> source, CharacterBitmapRgba dest, MsdfEncodeSettings encode, bool flipY)
+        private static void PackToRgba8(Bitmap<float> source, CharacterBitmapRgba dest, MsdfEncodeSettings encode, bool flipY)
         {
             // MsdfGen outputs float values in [0,1] where 0.5 is the edge
             // Inside shape: > 0.5, Outside shape: < 0.5
-            
+
             // For self-intersecting shapes, we may need median filtering
             // to reduce artifacts at overlap points
-            
+
             bool invertDistance = false; // MsdfGen convention matches Stride's SDF shader
             float scaleFactor = encode.Scale * 2f;
-
-            byte* buffer = (byte*)dest.Buffer;
-            int pitch = dest.Pitch;
 
             for (int y = 0; y < source.Height; y++)
             {
                 // Flip Y when writing to output (MsdfGen is Y-up, Stride pixels are Y-down)
                 int destY = flipY ? (source.Height - 1 - y) : y;
-                byte* row = buffer + destY * pitch;
 
                 for (int x = 0; x < source.Width; x++)
                 {
@@ -257,11 +254,8 @@ namespace Stride.Graphics.Font.RuntimeMsdf
                     g = Encode(g, encode.Bias, scaleFactor);
                     b = Encode(b, encode.Bias, scaleFactor);
 
-                    int offset = x * 4;
-                    row[offset + 0] = FloatToByte(r);
-                    row[offset + 1] = FloatToByte(g);
-                    row[offset + 2] = FloatToByte(b);
-                    row[offset + 3] = 255;
+                    int index = destY * source.Width + x;
+                    dest.Buffer[index] = new Color(FloatToByte(r), FloatToByte(g), FloatToByte(b), 255);
                 }
             }
         }

@@ -46,12 +46,12 @@ namespace Stride.Graphics.Font.RuntimeMsdf
             foreach (var contour in outline.Contours)
             {
                 if (contour?.Segments == null) continue;
-                
+
                 foreach (var seg in contour.Segments)
                 {
                     if (seg == null) continue;
                     totalSegments++;
-                    
+
                     UpdateBounds(seg.P0, ref minX, ref minY, ref maxX, ref maxY);
                     UpdateBounds(seg.P1, ref minX, ref minY, ref maxX, ref maxY);
                 }
@@ -104,26 +104,20 @@ namespace Stride.Graphics.Font.RuntimeMsdf
             FillSolid(bmp, 0, 0, 0);
 
             // Draw outline segments
-            unsafe
+            foreach (var contour in outline.Contours)
             {
-                byte* buffer = (byte*)bmp.Buffer;
-                int pitch = bmp.Pitch;
+                if (contour?.Segments == null) continue;
 
-                foreach (var contour in outline.Contours)
+                foreach (var seg in contour.Segments)
                 {
-                    if (contour?.Segments == null) continue;
+                    if (seg == null) continue;
 
-                    foreach (var seg in contour.Segments)
-                    {
-                        if (seg == null) continue;
+                    // Transform points to bitmap space
+                    var p0 = TransformPoint(seg.P0, minX, minY, scale, df.Padding);
+                    var p1 = TransformPoint(seg.P1, minX, minY, scale, df.Padding);
 
-                        // Transform points to bitmap space
-                        var p0 = TransformPoint(seg.P0, minX, minY, scale, df.Padding);
-                        var p1 = TransformPoint(seg.P1, minX, minY, scale, df.Padding);
-
-                        // Draw line segment
-                        DrawLine(buffer, pitch, totalWidth, totalHeight, p0, p1, 255, 255, 255);
-                    }
+                    // Draw line segment
+                    DrawLine(bmp.Buffer, totalWidth, totalHeight, p0, p1, 255, 255, 255);
                 }
             }
 
@@ -148,26 +142,19 @@ namespace Stride.Graphics.Font.RuntimeMsdf
             if (p.Y > maxY) maxY = p.Y;
         }
 
-        private static unsafe void FillSolid(CharacterBitmapRgba bmp, byte r, byte g, byte b)
+        private static void FillSolid(CharacterBitmapRgba bmp, byte r, byte g, byte b)
         {
-            byte* buffer = (byte*)bmp.Buffer;
-            int pitch = bmp.Pitch;
-
             for (int y = 0; y < bmp.Rows; y++)
             {
-                byte* row = buffer + y * pitch;
                 for (int x = 0; x < bmp.Width; x++)
                 {
-                    int offset = x * 4;
-                    row[offset + 0] = r;
-                    row[offset + 1] = g;
-                    row[offset + 2] = b;
-                    row[offset + 3] = 255;
+                    int index = y * bmp.Width + x;
+                    bmp.Buffer[index] = new Color(r, g, b, 255);
                 }
             }
         }
 
-        private static unsafe void DrawLine(byte* buffer, int pitch, int width, int height, 
+        private static void DrawLine(Color[] buffer, int width, int height,
             Vector2 p0, Vector2 p1, byte r, byte g, byte b)
         {
             // Simple Bresenham line drawing
@@ -190,11 +177,8 @@ namespace Stride.Graphics.Font.RuntimeMsdf
                 // Plot point if in bounds
                 if (x0 >= 0 && x0 < width && y0 >= 0 && y0 < height)
                 {
-                    byte* pixel = buffer + y0 * pitch + x0 * 4;
-                    pixel[0] = r;
-                    pixel[1] = g;
-                    pixel[2] = b;
-                    pixel[3] = 255;
+                    int index = y0 * width + x0;
+                    buffer[index] = new Color(r, g, b, 255);
                 }
 
                 if (x0 == x1 && y0 == y1) break;

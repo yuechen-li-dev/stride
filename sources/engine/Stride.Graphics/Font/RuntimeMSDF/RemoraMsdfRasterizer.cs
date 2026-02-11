@@ -2,6 +2,7 @@
 // Distributed under the MIT license. See the LICENSE.md file in the project root for more information.
 
 using System;
+using Stride.Core.Mathematics;
 using NVector2 = System.Numerics.Vector2;
 using Remora.MSDFGen;
 using Remora.MSDFGen.Graphics;
@@ -167,19 +168,14 @@ namespace Stride.Graphics.Font.RuntimeMsdf
             if (p.Y > maxY) maxY = p.Y;
         }
 
-        private static unsafe void PackPixmapToRgba8(Pixmap<Color3> pix, CharacterBitmapRgba dst, MsdfEncodeSettings encode)
+        private static void PackPixmapToRgba8(Pixmap<Color3> pix, CharacterBitmapRgba dst, MsdfEncodeSettings encode)
         {
             // Encode settings apply around the 0.5 midpoint.
             // encode.Scale is defined so that 0.5 means "identity".
             var scaleFactor = encode.Scale * 2f;
 
-            byte* basePtr = (byte*)dst.Buffer;
-            int pitch = dst.Pitch;
-
             for (int y = 0; y < pix.Height; y++)
             {
-                byte* row = basePtr + y * pitch;
-
                 for (int x = 0; x < pix.Width; x++)
                 {
                     var c = pix[x, y];
@@ -205,11 +201,8 @@ namespace Stride.Graphics.Font.RuntimeMsdf
                     float g = ApplyEncode(g0, encode.Bias, scaleFactor);
                     float b = ApplyEncode(b0, encode.Bias, scaleFactor);
 
-                    int o = x * 4;
-                    row[o + 0] = FloatToByte(r);
-                    row[o + 1] = FloatToByte(g);
-                    row[o + 2] = FloatToByte(b);
-                    row[o + 3] = 255;
+                    int index = y * pix.Width + x;
+                    dst.Buffer[index] = new Color(FloatToByte(r), FloatToByte(g), FloatToByte(b), 255);
                 }
             }
         }

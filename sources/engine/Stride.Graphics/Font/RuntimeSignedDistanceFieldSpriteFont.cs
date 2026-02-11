@@ -68,10 +68,14 @@ namespace Stride.Graphics.Font
 
         private sealed class SdfCoverageGenerator : IDistanceFieldGenerator
         {
+            private readonly BitmapSdfRasterizer rasterizer = new();
+
             public CharacterBitmapRgba Generate(GlyphInput input, DistanceFieldParams p)
                 => input switch
                 {
-                    CoverageInput c => BuildSdfRgbFromCoverage(c.Buffer, c.Width, c.Rows, c.Pitch, p.Pad, p.PixelRange, p.Encode),
+                    CoverageInput c => rasterizer.GenerateSdfFromCoverage(
+                        c.Buffer, c.Width, c.Rows, c.Pitch, p.Pad, p.PixelRange,
+                        p.Encode.Bias, p.Encode.Scale),
                     _ => throw new ArgumentOutOfRangeException(nameof(input), "Unsupported input for SDF generator."),
                 };
         }
@@ -106,7 +110,7 @@ namespace Stride.Graphics.Font
 
         // Swap MSDF backend HERE without touching the runtime font pipeline.
         private readonly IDistanceFieldGenerator generator =
-            new SdfOrMsdfGenerator(new MsdfGenCoreRasterizer(), MsdfEncodeSettings.Default);
+            new SdfOrMsdfGenerator(new DummyTestRasterizer(), MsdfEncodeSettings.Default);
 
         // Runtime SDF glyph cache key (future-proof for multiple ranges/modes)
         private readonly ConcurrentDictionary<GlyphKey, CharacterSpecification> characters = [];
@@ -468,178 +472,19 @@ namespace Stride.Graphics.Font
 
                 var (key, sdfBitmap) = item;
 
+                // Skip if character was removed
                 if (!characters.TryGetValue(key, out var spec) || spec == null)
-                {
-                    sdfBitmap.Dispose();
                     continue;
-                }
 
-                // Might have been uploaded already while task was running
+                // Skip if already uploaded while task was running
                 if (spec.IsBitmapUploaded)
-                {
-                    sdfBitmap.Dispose();
                     continue;
-                }
 
                 var subrect = new Rectangle();
                 var handle = cache.UploadGlyphBitmap(commandList, spec, sdfBitmap, ref subrect, out var bitmapIndex);
 
                 ApplyUploadedGlyph(cache, key, spec, handle, bitmapIndex);
-
-                sdfBitmap.Dispose();
             }
-        }
-
-
-        // --- Bitmap based SDF generation (CPU) for fallback purposes, packed into RGB so median(R,G,B) = SDF value ---
-
-        private static unsafe CharacterBitmapRgba BuildSdfRgbFromCoverage(byte[] src, int srcW, int srcH, int srcPitch, int pad, int pixelRange, DistanceEncodeParams enc)
-        {
-            int w = srcW + pad * 2;
-            int h = srcH + pad * 2;
-
-            var inside = new bool[w * h];
-
-            for (int y = 0; y < srcH; y++)
-            {
-                int dstRow = (y + pad) * w + pad;
-                int srcRow = y * srcPitch;
-
-                for (int x = 0; x < srcW; x++)
-                {
-                    inside[dstRow + x] = src[srcRow + x] >= 128;
-                }
-            }
-
-            var distToOutsideSq = new float[w * h];
-            ComputeEdtSquared(w, h, inside, featureIsInside: false, distToOutsideSq);
-
-            var distToInsideSq = new float[w * h];
-            ComputeEdtSquared(w, h, inside, featureIsInside: true, distToInsideSq);
-
-            var bmp = new CharacterBitmapRgba(w, h);
-            byte* dst = (byte*)bmp.Buffer;
-
-            float scale = enc.Scale / Math.Max(1, pixelRange);
-
-            float bias = enc.Bias;
-            for (int y = 0; y < h; y++)
-            {
-                byte* row = dst + y * bmp.Pitch;
-                int baseIdx = y * w;
-
-                for (int x = 0; x < w; x++)
-                {
-                    int i = baseIdx + x;
-                    float dOut = MathF.Sqrt(distToOutsideSq[i]);
-                    float dIn = MathF.Sqrt(distToInsideSq[i]);
-                    float signed = dOut - dIn;
-
-                    float encoded = Math.Clamp(bias + signed * scale, 0f, 1f);
-                    byte b = (byte)(encoded * 255f + 0.5f);
-
-                    int o = x * 4;
-                    row[o + 0] = b;
-                    row[o + 1] = b;
-                    row[o + 2] = b;
-                    row[o + 3] = 255;
-                }
-            }
-
-            return bmp;
-        }
-
-        // Compute squared distances to the nearest feature pixels using Felzenszwalb/Huttenlocher EDT.
-        // If featureIsInside == true, features are where inside==true; else features are where inside==false.
-        private static void ComputeEdtSquared(int w, int h, bool[] inside, bool featureIsInside, float[] outDistSq)
-        {
-            const float INF = 1e20f;
-            int maxDim = Math.Max(w, h);
-
-            // Rent buffers from the shared pool instead of 'new'
-            float[] tmp = ArrayPool<float>.Shared.Rent(w * h);
-            float[] f = ArrayPool<float>.Shared.Rent(maxDim);
-            float[] d = ArrayPool<float>.Shared.Rent(maxDim);
-            int[] v = ArrayPool<int>.Shared.Rent(maxDim);
-            float[] z = ArrayPool<float>.Shared.Rent(maxDim + 1);
-
-            try
-            {
-                // Stage 1: vertical transform
-                for (int x = 0; x < w; x++)
-                {
-                    for (int y = 0; y < h; y++)
-                    {
-                        bool isFeature = (inside[y * w + x] == featureIsInside);
-                        f[y] = isFeature ? 0f : INF;
-                    }
-
-                    DistanceTransform1D(f, h, d, v, z);
-
-                    for (int y = 0; y < h; y++)
-                        tmp[y * w + x] = d[y];
-                }
-
-                // Stage 2: horizontal transform
-                for (int y = 0; y < h; y++)
-                {
-                    int row = y * w;
-                    for (int x = 0; x < w; x++)
-                        f[x] = tmp[row + x];
-
-                    DistanceTransform1D(f, w, d, v, z);
-
-                    for (int x = 0; x < w; x++)
-                        outDistSq[row + x] = d[x];
-                }
-            }
-            finally
-            {
-                // ALWAYS return the arrays so they can be reused
-                ArrayPool<float>.Shared.Return(tmp);
-                ArrayPool<float>.Shared.Return(f);
-                ArrayPool<float>.Shared.Return(d);
-                ArrayPool<int>.Shared.Return(v);
-                ArrayPool<float>.Shared.Return(z);
-            }
-        }
-
-        // 1D squared distance transform for f[] using lower envelope of parabolas.
-        // Produces d[i] = min_j ( (i-j)^2 + f[j] )
-        private static void DistanceTransform1D(float[] f, int n, float[] d, int[] v, float[] z)
-        {
-            int k = 0;
-            v[0] = 0;
-            z[0] = float.NegativeInfinity;
-            z[1] = float.PositiveInfinity;
-
-            for (int q = 1; q < n; q++)
-            {
-                float s;
-                while (true)
-                {
-                    int p = v[k];
-                    // intersection of parabolas from p and q
-                    s = ((f[q] + q * q) - (f[p] + p * p)) / (2f * (q - p));
-
-                    if (s > z[k]) break;
-                    k--;
-                }
-
-                k++;
-                v[k] = q;
-                z[k] = s;
-                z[k + 1] = float.PositiveInfinity;
-            }
-
-            k = 0;
-            for (int q = 0; q < n; q++)
-            {
-                while (z[k + 1] < q) k++;
-                int p = v[k];
-                float dx = q - p;
-                d[q] = dx * dx + f[p];
-            }
-        }
+        }   
     }
 }

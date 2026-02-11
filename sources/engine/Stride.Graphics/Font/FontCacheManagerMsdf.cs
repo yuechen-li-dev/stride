@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Runtime.InteropServices;
 using Stride.Core;
 using Stride.Core.Mathematics;
 
@@ -51,7 +52,7 @@ namespace Stride.Graphics.Font
                 glyph.IsUploaded = false;
                 glyph.Owner?.IsBitmapUploaded = false;
             }
-                      
+
             cachedGlyphs.Clear();
             packer.Clear(cacheTextures[0].ViewWidth, cacheTextures[0].ViewHeight);
 
@@ -88,9 +89,11 @@ namespace Stride.Graphics.Font
                 int dstX = subrect.Left + atlasPad;
                 int dstY = subrect.Top + atlasPad;
 
-                var dataBox = new DataBox(bitmap.Buffer, bitmap.Pitch, bitmap.Pitch * bitmap.Rows);
                 var region = new ResourceRegion(dstX, dstY, 0, dstX + bitmap.Width, dstY + bitmap.Rows, 1);
-                commandList.UpdateSubResource(cacheTextures[0], 0, dataBox, region);
+
+                // Cast Color[] to ReadOnlySpan<byte> for UpdateSubResource
+                var sourceData = MemoryMarshal.AsBytes(bitmap.Buffer.AsSpan());
+                commandList.UpdateSubResource(cacheTextures[0], 0, sourceData, region);
             }
 
             // Track for eviction behavior parity (frame-based LRU).
@@ -106,7 +109,7 @@ namespace Stride.Graphics.Font
                 LastUsedFrame = system.FrameCount,
                 IsUploaded = true,
             };
-            
+
             cachedGlyphs.AddFirst(cached.ListNode);
             return cached;
         }
@@ -192,7 +195,7 @@ namespace Stride.Graphics.Font
 
             // FINAL ATTEMPT: If partial eviction failed, wipe the whole cache.
             // This handles high fragmentation or a very "busy" frame.
-            
+
             ClearCache();
 
             var finalTest = new Rectangle();
