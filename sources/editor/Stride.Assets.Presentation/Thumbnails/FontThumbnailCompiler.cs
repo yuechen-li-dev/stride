@@ -49,24 +49,32 @@ namespace Stride.Assets.Presentation.Thumbnails
     /// </summary>
     internal class FontThumbnailBuildCommand : ThumbnailFromTextureCommand<Graphics.SpriteFont>
     {
+        internal readonly struct FontPreviewSelection
+        {
+            public FontPreviewSelection(Graphics.SpriteFont font, bool usingRasterizedPreviewForRuntimeSdf)
+            {
+                Font = font;
+                UsingRasterizedPreviewForRuntimeSdf = usingRasterizedPreviewForRuntimeSdf;
+            }
+
+            public Graphics.SpriteFont Font { get; }
+
+            public bool UsingRasterizedPreviewForRuntimeSdf { get; }
+        }
+
         public FontThumbnailBuildCommand(ThumbnailCompilerContext context, string url, AssetItem assetItem, IAssetFinder assetFinder, ThumbnailCommandParameters description)
             : base(context, assetItem, assetFinder, url, description)
         {
         }
 
-        protected override void SetThumbnailParameters()
+        internal static FontPreviewSelection SelectPreviewFont(Graphics.SpriteFont loadedAsset)
         {
-            FontSize = 0.75f;
-            TitleText = BuildTitleText();
-
-            bool usingRasterizedPreviewForRuntimeSdf = false;
-
-            if (LoadedAsset is RuntimeSignedDistanceFieldSpriteFont runtimeSdfFont)
+            if (loadedAsset is RuntimeSignedDistanceFieldSpriteFont runtimeSdfFont)
             {
                 var fontSystem = runtimeSdfFont.FontSystem;
                 if (fontSystem != null)
                 {
-                    Font = fontSystem.NewDynamic(
+                    var previewFont = fontSystem.NewDynamic(
                         defaultSize: runtimeSdfFont.Size,
                         fontName: runtimeSdfFont.FontName,
                         style: runtimeSdfFont.Style,
@@ -76,19 +84,22 @@ namespace Stride.Assets.Presentation.Thumbnails
                         extraLineSpacing: 0,
                         defaultCharacter: runtimeSdfFont.DefaultCharacter ?? ' ');
 
-                    usingRasterizedPreviewForRuntimeSdf = true;
+                    return new FontPreviewSelection(previewFont, true);
                 }
-                else
-                {
-                    Font = LoadedAsset;
-                }
-            }
-            else
-            {
-                Font = LoadedAsset;
             }
 
-            if (!usingRasterizedPreviewForRuntimeSdf && Font != null && Font.FontType == SpriteFontType.SDF)
+            return new FontPreviewSelection(loadedAsset, false);
+        }
+
+        protected override void SetThumbnailParameters()
+        {
+            FontSize = 0.75f;
+            TitleText = BuildTitleText();
+
+            var previewSelection = SelectPreviewFont(LoadedAsset);
+            Font = previewSelection.Font;
+
+            if (!previewSelection.UsingRasterizedPreviewForRuntimeSdf && Font != null && Font.FontType == SpriteFontType.SDF)
                 EffectInstance = UIBatch.SDFSpriteFontEffect;
             else
                 EffectInstance = null;
