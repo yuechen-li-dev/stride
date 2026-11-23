@@ -108,7 +108,8 @@
       "GravitySensor.Windows",
       "ParticlesSample.Windows",
       "PhysicsSample.Windows",
-      "SpriteStudioDemo.Windows"
+      "SpriteStudioDemo.Windows",
+      "Stride.Engine.Tests"
     ],
     "mixin": {
       "mixins": [
